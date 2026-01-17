@@ -112,5 +112,4 @@ MIT License — feel free to use, modify, and learn from this code!
 Made with curiosity & coffee ☕  
 Happy (secure) coding! 🐦‍⬛
 
-```
 
