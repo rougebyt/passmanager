@@ -1,96 +1,96 @@
-from cryptography.fernet import Fernet
-from os import path
+import os
+from cryptography.fernet import Fernet, InvalidToken
 
+PASS_FILE = "passwords.txt"      
+KEY_FILE = ".secret.key"         
 
-PASS_FILE = "testpass.txt"
-KEY_FILE = "key.key"
-
-
-def write_key():
-    try:
+def load_or_create_key() -> bytes:
+    if not os.path.exists(KEY_FILE):
+        print("No key found. Generating new one...")
         key = Fernet.generate_key()
-        with open(KEY_FILE, "wb") as key_file:
-            key_file.write(key)
+        with open(KEY_FILE, "wb") as f:
+            f.write(key)
+       
+        if os.name != 'nt':
+            os.chmod(KEY_FILE, 0o600)
+        print("New encryption key created.")
+        return key
 
-    except Exception as e:
-        print("Couldn't write key: ",e)
-
-def load_key():
-        try:
-            if not path.exists(KEY_FILE):
-                write_key()
-                with open(KEY_FILE, 'rb') as key_file:
-                    key = key_file.read()
-                return key
-
-            else:
-                with open(KEY_FILE, 'rb') as key_file:
-                    key = key_file.read()
-                return key
-            
-        except Exception as e:
-            print("Couldn't load key because: ", e)
+    with open(KEY_FILE, "rb") as f:
+        return f.read()
 
 
-fer = Fernet(load_key())
+def add_password():
+    fer = Fernet(load_or_create_key())
 
-def add():
+    uname = input("Username / Email / Service: ").strip()
+    if not uname:
+        print("Username cannot be empty.")
+        return
+
+    passwd = input("Password: ").strip()
+    if not passwd:
+        print("Password cannot be empty.")
+        return
+
+    encrypted = fer.encrypt(passwd.encode()).decode()
+
+    with open(PASS_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{uname}|{encrypted}\n")
+
+    print("Credential saved.")
+
+
+def view_passwords():
+    if not os.path.exists(PASS_FILE) or os.stat(PASS_FILE).st_size == 0:
+        print("\nNo passwords stored yet.\n")
+        return
+
+    fer = Fernet(load_or_create_key())
+
+    print("\n" + "═"*50)
+    print("      STORED CREDENTIALS")
+    print("═"*50)
+
     try:
-        uname = input("User Name: ")
-        passwd = input("Password: ")
+        with open(PASS_FILE, encoding="utf-8") as f:
+            for line in f:
+                line = line.rstrip()
+                if not line or '|' not in line:
+                    continue
 
-        if uname != "" and passwd !="":
-            with open(PASS_FILE, 'a') as f:
-                encrypted_uname = fer.encrypt(uname.encode()).decode()
-                encrypted_pass = fer.encrypt(passwd.encode()).decode()
-                f.write(f"{encrypted_uname}|{encrypted_pass}\n")
-        else:
-            print("Invalid username or password")
-            
+                uname, enc_pass = line.split("|", 1)
+                try:
+                    password = fer.decrypt(enc_pass.encode()).decode()
+                    print(f" {uname:24} :  {password}")
+                except InvalidToken:
+                    print(f" {uname:24} :  [DECRYPTION FAILED - wrong key?]")
     except Exception as e:
-        print("Unable to add credentials due to: ", e)
-     
+        print(f"Error reading/decrypting file: {e}")
 
-def view():
-    
-    print("**************USER CREDENTIALS**************\n")
-    with open(PASS_FILE, 'r') as f:
-            
-            for line in f.readlines():
-
-                credential = line.rstrip()
-                encrypted_uname, encrypted_pass = credential.split("|")
-
-                uname = fer.decrypt(encrypted_uname.encode()).decode()
-                passwd = fer.decrypt(encrypted_pass.encode()).decode()
-                print(f"username:{uname}, password:{passwd}")
-            
-        
-        
-    print(44*"*", "\n")
+    print("═"*50 + "\n")
 
 
 def main():
     while True:
+        print("\n" + "─"*40)
+        print("  (a)dd   (v)iew   (q)uit")
+        print("─"*40)
+        choice = input("→ ").strip().lower()
 
-        mode = input("\n(v) to view or (a) to add password (q) to quit: ").lower()
-
-        if mode == "q":
-
+        if choice in ("q", "quit", "exit"):
+            print("Goodbye!\n")
             break
-
-        elif mode == "a":
-
-            add()
-        
-        elif mode == "v":
-
-            view()
-
+        elif choice == "a":
+            add_password()
+        elif choice == "v":
+            view_passwords()
         else:
-            print("Invalid input...")
-            continue
+            print("Invalid choice. Use a/v/q")
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\nInterrupted. Bye! 👋")
